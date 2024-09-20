@@ -6,7 +6,10 @@ using SeleniumExtras.WaitHelpers;
 using System;
 using System.IO;
 using System.Threading;
+using WebDriverManager;
+using WebDriverManager.DriverConfigs.Impl;
 using WindowsInput;
+
 namespace Protonmail_download_messages
 {
     class Program
@@ -15,6 +18,7 @@ namespace Protonmail_download_messages
         {
             try
             {
+                bool automaticDownload = true;
                 InputSimulator teclado = new InputSimulator();
                 string path = GetDownloadFolderPath();
                 int userInput = 0;
@@ -31,21 +35,9 @@ namespace Protonmail_download_messages
                 Console.Clear();
 
                 Console.WriteLine("Set password :");
-                string password = "";
-                string tecla = "";
-                ConsoleKeyInfo key = Console.ReadKey(true);
-                while (key.Key != ConsoleKey.Enter)
-                {
-                    if (key.Key != ConsoleKey.Enter)
-                    {
-                        tecla = key.KeyChar.ToString().ToLower();
-                        if (key.Modifiers == ConsoleModifiers.Shift)
-                            tecla = key.KeyChar.ToString().ToUpper();
-                        password += tecla;
-                    }
-                    key = Console.ReadKey(true);
-                }
+                string password = GetPassword();
                 Console.Clear();
+                Console.WriteLine("\n Username and Password correctly obtained.");
 
                 path = path + @"\Protonmail\";
                 string InboxPath = path + "Inbox";
@@ -54,12 +46,21 @@ namespace Protonmail_download_messages
                 System.IO.Directory.CreateDirectory(InboxPath);
                 System.IO.Directory.CreateDirectory(SentPath);
 
-                FirefoxOptions options = SetPreferences(path);
+                string firefoxPath = GetFirefoxPathFromRegistry();
+                new DriverManager().SetUpDriver(new FirefoxConfig());
+                FirefoxOptions options = SetPreferences(path, firefoxPath);
+
                 WebDriver driver = new FirefoxDriver(options);
+                Console.Clear();
+                Console.WriteLine("Firefox driver Launched\r\n");
+
                 WebDriverWait wait30 = new WebDriverWait(driver, TimeSpan.FromSeconds(30));
+                WebDriverWait wait120 = new WebDriverWait(driver, TimeSpan.FromSeconds(120));
                 wait30.IgnoreExceptionTypes(typeof(StaleElementReferenceException));
                 wait30.IgnoreExceptionTypes(typeof(NoSuchElementException));
                 driver.Manage().Window.Maximize();
+
+                //Login
                 driver.Navigate().GoToUrl("https://mail.protonmail.com");
                 wait30.Until(ExpectedConditions.ElementExists(By.Id("username")));
                 IWebElement inputUser = driver.FindElement(By.Id("username"));
@@ -67,39 +68,36 @@ namespace Protonmail_download_messages
                 inputUser.SendKeys(username);
                 wait30.Until(ExpectedConditions.ElementExists(By.Id("password")));
                 IWebElement inputPassword = driver.FindElement(By.Id("password"));
-
                 inputPassword.Click();
                 inputPassword.Clear();
-
                 inputPassword.SendKeys(password);
                 password = "";
-                driver.FindElement(By.CssSelector("button.button-large.button-solid-norm.w100.mt1-75")).Click();
-                wait30.Until(ExpectedConditions.ElementExists(By.ClassName("text-keep-space")));
-                driver.Navigate().GoToUrl("https://account.protonmail.com/u/0/mail/appearance");
+                driver.FindElement(By.CssSelector("button.button:nth-child(6)")).Click();
 
-                wait30.Until(ExpectedConditions.ElementExists(By.Id("viewMode")));
-                var Grouping = driver.FindElement(By.Id("viewMode")).GetAttribute("Checked");
-                if (Grouping == "true")
-                    driver.ExecuteScript("arguments[0].click();", driver.FindElement(By.Id("viewMode")));
-                bool automaticDownload = true;
+                //Set No reply grouping
+                bool Grouping, Layout;
+                SetSettings(false,true,out Grouping,out Layout);
 
                 if (userInput == 3 || userInput == 1)
                 {
-                    driver.Navigate().GoToUrl("https://mail.protonmail.com/u/0");
                     DownloadMails();
                     MoveFiles(path, InboxPath);
                 }
                 if (userInput == 3 || userInput == 2)
                 {
-                    driver.Navigate().GoToUrl("https://mail.protonmail.com/u/0/sent");
+                    WaitAndClickElement("a[data-testid='navigation-link:sent']");
                     DownloadMails();
                     MoveFiles(path, SentPath);
                 }
 
+                SetSettings(Grouping, Layout,out Grouping,out Layout);
+                Console.Clear();
+                Console.WriteLine("Export completed!");
                 driver.Quit();
                 driver.Close();
                 Environment.Exit(0);
 
+                //Metodos
                 void MoveFiles(string OrigPath, string DestPath)
                 {
                     string[] files = Directory.GetFiles(OrigPath, "*.eml");
@@ -118,76 +116,51 @@ namespace Protonmail_download_messages
                     while (continuar)
                     {
                         Thread.Sleep(600);
-                        wait30.Until(ExpectedConditions.VisibilityOfAllElementsLocatedBy(By.CssSelector(".flex.flex-nowrap.flex-align-items-center.cursor-pointer.item-container")));
-                        var correosPagina = driver.FindElements(By.CssSelector(".flex.flex-nowrap.flex-align-items-center.cursor-pointer.item-container"));
+                        wait120.Until(ExpectedConditions.VisibilityOfAllElementsLocatedBy(By.CssSelector(".flex.flex-nowrap.item-container")));
+                        var correosPagina = driver.FindElements(By.CssSelector(".flex.flex-nowrap.item-container"));
 
                         for (int i = 0; i < correosPagina.Count; i++)
                         {
+                            bool ReadStatus = false;
                             try
                             {
                                 ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].scrollIntoView(true);", correosPagina[i]);
                                 Thread.Sleep(200);
-                                wait30.Until(ExpectedConditions.ElementToBeClickable(correosPagina[i]));
+                                ReadStatus = correosPagina[i].GetAttribute("class").Contains("unread");
+                                wait120.Until(ExpectedConditions.ElementToBeClickable(correosPagina[i]));
                                 correosPagina[i].Click();
                             }
                             catch
                             {
                                 Thread.Sleep(60000);
-                                correosPagina = driver.FindElements(By.CssSelector(".flex.flex-nowrap.flex-align-items-center.cursor-pointer.item-container"));
+                                correosPagina = driver.FindElements(By.CssSelector(".flex.flex-nowrap.item-container"));
                                 correosPagina[i].Click();
-
                             }
                             wait30.Until(ExpectedConditions.ElementExists(By.ClassName("message-recipient-item-label")));
                             wait30.Until(ExpectedConditions.ElementIsVisible(By.ClassName("message-recipient-item-label")));
                             wait30.Until(ExpectedConditions.ElementToBeClickable(By.ClassName("message-recipient-item-label")));
+                            wait30.Until(ExpectedConditions.ElementExists(By.CssSelector("button[data-testid='message-header-expanded:more-dropdown'")));
 
-                            var correosVisibles = driver.FindElements(By.ClassName("message-recipient-item-label"));
-                            var articlesinHilo = driver.FindElements(By.TagName("article"));
+                            //More Dropdown
+                            WaitAndClickElement("button[data-testid='message-header-expanded:more-dropdown']");
+                            //Export
+                            WaitAndClickElement("button[data-testid='message-view-more-dropdown:export']");
 
-                            for (int j = correosVisibles.Count - 1; j > -1; j--)
+                            if (ReadStatus)
                             {
-                                var claseArticle = articlesinHilo[j].GetAttribute("class");
-                                ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].scrollIntoView(true);", correosVisibles[j]);
-                                if (claseArticle.IndexOf("is-opened") == -1)
-                                {
-                                    driver.ExecuteScript("arguments[0].click();", correosVisibles[j]);
-                                    claseArticle = articlesinHilo[j].GetAttribute("class");
-                                    if (claseArticle.IndexOf("is-closed") != -1)
-                                        driver.ExecuteScript("arguments[0].click();", correosVisibles[j]);
-                                }
+                                Thread.Sleep(1000);
+                                WaitAndClickElement("button[data-testid='message-header-expanded:mark-as-unread']");
                             }
-                            wait30.Until(ExpectedConditions.ElementExists(By.CssSelector(".icon-16p.caret-like")));
-                            var botonesHilo = driver.FindElements(By.CssSelector(".icon-16p.caret-like"));
 
-                            for (int r = 0; r < correosVisibles.Count; r++)
-                            {
-
-                                wait30.Until(ExpectedConditions.ElementIsVisible(By.CssSelector(".message-content.scroll-horizontal-if-needed.relative.bodyDecrypted.bg-norm.color-norm")));
-                                wait30.Until(ExpectedConditions.ElementToBeClickable(By.CssSelector(".message-content.scroll-horizontal-if-needed.relative.bodyDecrypted.bg-norm.color-norm")));
-
-                                IWebElement MailContainer = driver.FindElement(By.CssSelector(".message-content.scroll-horizontal-if-needed.relative.bodyDecrypted.bg-norm.color-norm"));
-
-                                var Textocorreo = MailContainer.Text;
-                                int contador = 60;
-                                while (MailContainer.Text == "" && contador > 0)
-                                {
-                                    if (MailContainer.Text == "null")
-                                        Console.WriteLine("NULL");
-                                    Thread.Sleep(500);
-                                    contador--;
-                                }
-                                driver.ExecuteScript("arguments[0].click();", botonesHilo[r].FindElement(By.XPath("./..")));
-                                wait30.Until(ExpectedConditions.ElementExists(By.CssSelector(".flex-item-fluid.mtauto.mbauto")));
-                                driver.FindElements(By.CssSelector(".flex-item-fluid.mtauto.mbauto"))[4].Click();
-                                if (!automaticDownload)
-                                    automaticDownload = SetAutoDownloads();
-                            }
+                            if (!automaticDownload)
+                                automaticDownload = SetAutoDownloads();
                         }
                         try
                         {
-                            var NextButton = driver.FindElement(By.CssSelector(".icon-16p.block.rotateZ-270"));
-                            continuar = !bool.Parse(driver.ExecuteScript("return document.getElementsByClassName('icon-16p block rotateZ-270')[0].parentElement.disabled").ToString());
-                            driver.ExecuteScript("arguments[0].click();", NextButton.FindElement(By.XPath("./..")));
+                            var NextButton = driver.FindElement(By.CssSelector("button[data-testid='pagination-row:go-to-next-page']"));
+                            continuar = NextButton.Enabled;
+                            if (continuar)
+                                NextButton.Click();
                         }
                         catch (Exception ex)
                         {
@@ -196,6 +169,39 @@ namespace Protonmail_download_messages
                         }
                     }
 
+
+                }
+                void SetSettings(bool originalGrouping , bool originalLayout, out bool GroupingReturn, out bool LayoutReturn)
+                {
+                    //Set No reply grouping
+                    //bool originalGrouping = false, bool originalLayout = true
+                    //driver.FindElement(By.CssSelector("button.button:nth-child(6)")).Click();
+                    //Click Ajustes
+                    WaitAndClickElement(".drawer-sidebar-button.rounded.flex.interactive");
+                    //All Settings Click
+                    WaitAndClickElement("a[data-testid='drawer-quick-settings:all-settings-button']");
+                    //MessagesCompositions
+                    WaitAndClickElement("a[href = '/u/0/mail/general']");
+                    //ViewMode;
+                    wait30.Until(ExpectedConditions.ElementExists(By.Id("viewMode")));
+                    Thread.Sleep(1000);
+                     GroupingReturn = driver.FindElement(By.Id("viewMode")).Selected;
+                    //GroupingReturn = bool.Parse(prueba);
+                    if (GroupingReturn || originalGrouping)
+                        driver.ExecuteScript("arguments[0].click();", driver.FindElement(By.Id("viewMode")));
+
+                    //layout Columns
+                    LayoutReturn = Boolean.Parse(driver.FindElement(By.CssSelector("button[data-testid='layout:Column'")).GetAttribute("aria-pressed"));
+                    if (!LayoutReturn)
+                        WaitAndClickElement("button[data-testid='layout:Column'");
+
+                    if(!originalLayout)
+                        WaitAndClickElement("button[data-testid='layout:Row'");
+
+                    driver.Navigate().GoToUrl("https://mail.protonmail.com/u/0");
+
+                    //Close Side Panel
+                    WaitAndClickElement("button[data-testid='drawer-app-header:close']");
 
                 }
 
@@ -222,6 +228,19 @@ namespace Protonmail_download_messages
                 {
                     return Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders", "{374DE290-123F-4565-9164-39C4925E467B}", String.Empty).ToString();
                 }
+                string GetFirefoxPathFromRegistry()
+                {
+                    string firefoxRuta = null;
+                    string registryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\firefox.exe";
+                    using (RegistryKey clave = Registry.LocalMachine.OpenSubKey(registryKey))
+                    {
+                        if (clave != null)
+                        {
+                            firefoxRuta = clave.GetValue(null) as string;
+                        }
+                    }
+                    return firefoxRuta;
+                }
                 bool SetAutoDownloads()
                 {
                     Thread.Sleep(5000);
@@ -238,7 +257,17 @@ namespace Protonmail_download_messages
                     teclado.Keyboard.KeyPress(WindowsInput.Native.VirtualKeyCode.SPACE);
                     return true;
                 }
-                FirefoxOptions SetPreferences(string ruta)
+
+                void WaitAndClickElement(string CssSelector)
+                {
+                    wait30.Until(ExpectedConditions.ElementExists(By.CssSelector(CssSelector)));
+                    wait30.Until(ExpectedConditions.ElementIsVisible(By.CssSelector(CssSelector)));
+                    wait30.Until(ExpectedConditions.ElementToBeClickable(By.CssSelector(CssSelector)));
+                    var elemento = driver.FindElement((By.CssSelector(CssSelector)));
+                    elemento.Click();
+                }
+
+                FirefoxOptions SetPreferences(string ruta, string firefox_Ruta)
                 {
                     FirefoxOptions opcion = new FirefoxOptions();
                     opcion.SetPreference("browser.download.folderList", 2);
@@ -251,6 +280,7 @@ namespace Protonmail_download_messages
                     opcion.SetPreference("browser.helperApps.alwaysAsk.force", false);
                     opcion.SetPreference("browser.helperApps.neverAsk.saveToDisk", "Thunderbird Document, blob: ,application/vnd.protonmail.v1+json, application/json, json, media-src,blob,message, message/rfc6532,message/partial, message/external-body, message/rfc822, application/octet-stream, text/plain, application/download, application/octet-stream, binary/octet-stream, application/binary, application/x-unknown, texto/html");
                     opcion.SetPreference("pdfjs.disabled", true);
+                    opcion.BrowserExecutableLocation = firefox_Ruta;
                     return opcion;
                 }
             }
@@ -262,6 +292,32 @@ namespace Protonmail_download_messages
                 Console.ReadKey();
                 Environment.Exit(0);
             }
+        }
+
+        private static string GetPassword()
+        {
+            string password = "";
+            string tecla = "";
+
+            ConsoleKeyInfo key = Console.ReadKey(true);
+            while (key.Key != ConsoleKey.Enter)
+            {
+                if (key.Key != ConsoleKey.Enter && key.Key!= ConsoleKey.Backspace)
+                {
+                    tecla = key.KeyChar.ToString().ToLower();
+                    if (key.Modifiers == ConsoleModifiers.Shift)
+                        tecla = key.KeyChar.ToString().ToUpper();
+                    password += tecla;
+                }
+                else if (key.Key == ConsoleKey.Backspace && password.Length > 0)
+                {
+                    // Elimina el último carácter de la contraseña y borra un asterisco en la consola
+                    password = password.Substring(0, password.Length - 1);
+                }
+                key = Console.ReadKey(true);
+            }
+
+            return password;
         }
     }
 }
