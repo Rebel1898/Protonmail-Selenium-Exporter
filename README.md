@@ -10,8 +10,6 @@ The files are available on the path Downloads/Protonmails.
 ![image](https://user-images.githubusercontent.com/44053413/146108408-8aec7ccb-d7cd-49c4-92dd-11c41439057f.png)
 
 
-The basic executable files are available here:
-https://github.com/Rebel1898/Protonmail-Selenium-Exporter/blob/main/Protonmail%20Selenium%20Exporter.zip
 
 
 
