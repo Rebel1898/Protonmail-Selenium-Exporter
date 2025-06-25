@@ -6,7 +6,7 @@ This console app automatically exports all your emails on Protonmail as .eml fil
 Furthermore, it includes a summary report counting how many mails and how much space are you using by different grouping such as common recipient, common destinatary, by subject and by date. This can be done by itself or it is also included in any download option. The report is print on console  and in a TXT file.
 It is advised to set CMD Screen Buffer Size to a large value (Can be quite verbose).
 
-![imagen](https://github.com/user-attachments/assets/733f205f-d26f-4a98-90ce-3dfcf9b8425d)
+![imagen](https://github.com/user-attachments/assets/c60b4875-5de9-4b12-a377-25556cbb2984)
 
 ![imagen](https://github.com/user-attachments/assets/8dbd635a-b6c4-4eb9-b7bf-25737fad1e3d)
 
